@@ -1,3 +1,18 @@
+<?php
+session_start();
+//initialize cart if not set or is unset
+if (!isset($_SESSION['cart'])) {
+    $_SESSION['cart'] = array();
+}
+
+//unset quantity
+unset($_SESSION['qty_array']);
+$mysqli = new mysqli('localhost', 'root', '', 'php_cafeteria_app') or die(mysqli_error($mysqli));
+$result = $mysqli->query("SELECT * FROM products") or die($mysqli->error);
+$total_orders = $mysqli->query("SELECT sum(order_count) as order_count FROM orders") or die($mysqli->error);
+$total_earnings = $mysqli->query("SELECT sum(total) as earning_count FROM orders WHERE type='paid'") or die($mysqli->error);
+$total_receivable = $mysqli->query("SELECT sum(total) as earning_count FROM orders WHERE type='pending'") or die($mysqli->error);
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -17,6 +32,69 @@
         </div>
     </nav>
     <div class="container mt-4 mh-100">
+        <?php if (isset($_SESSION['message'])) {
+        ?>
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="alert alert-info text-center">
+                        <?php echo $_SESSION['message']; ?>
+                    </div>
+                </div>
+            </div>
+        <?php
+            unset($_SESSION['message']);
+        } ?>
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Earnings</h5>
+                        <h2>
+                            <?php
+                            $earnings = $total_earnings->fetch_assoc()['earning_count'];
+                            if ($earnings > 0)
+                                echo "₱" . $earnings;
+                            else
+                                echo "₱0";
+                            ?>
+                        </h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Orders</h5>
+                        <h2>
+                            <?php
+                            $orders = $total_orders->fetch_assoc()['order_count'];
+                            if ($orders > 0)
+                                echo $orders;
+                            else
+                                echo 0;
+                            ?>
+                        </h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <h5 class="card-title">To be recieved</h5>
+                        <h2>
+                            <?php
+                            $receivable = $total_receivable->fetch_assoc()['earning_count'];
+                            if ($receivable > 0)
+                                echo "₱" . $receivable;
+                            else
+                                echo "₱0";
+                            ?>
+                        </h2>
+
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="row">
             <div class="col-4">
                 <div class="card mh-100">
@@ -25,23 +103,53 @@
                         <table class="table">
                             <thead>
                                 <tr class="table-dark">
+                                    <th></th>
                                     <th>Order</th>
                                     <th>Amount</th>
-                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="table-light">
-                                    <th>Fried Chicken</th>
-                                    <th>P59</th>
-                                    <th><button type="button" class="btn-close" aria-label="Close"></button></th>
+                                <?php
+                                //initialize total
+                                $total = 0;
+                                if (!empty($_SESSION['cart'])) {
+                                    //connection
+                                    $conn = new mysqli('localhost', 'root', '', 'php_cafeteria_app');
+                                    //create array of initail qty which is 1
+                                    $index = 0;
+                                    if (!isset($_SESSION['qty_array'])) {
+                                        $_SESSION['qty_array'] = array_fill(0, count($_SESSION['cart']), 1);
+                                    }
+                                    $sql = "SELECT * FROM products WHERE id IN (" . implode(',', $_SESSION['cart']) . ")";
+                                    $query = $conn->query($sql);
+                                    while ($row = $query->fetch_assoc()) {
+                                ?>
+
+                                        <tr class="table-light">
+                                            <th><a href="delete_item.php?id=<?php echo $row['id']; ?>&index=<?php echo $index; ?>" class="btn-close" aria-label="Close"></a></th>
+                                            <th><?php echo $row['title']; ?></th>
+                                            <th><?php echo number_format($row['price'], 2); ?></th>
+                                            <input type="hidden" name="indexes[]" value="<?php echo $index; ?>">
+                                            <?php $total += $_SESSION['qty_array'][$index] * $row['price']; ?>
+                                        </tr>
+                                    <?php
+                                        $index++;
+                                    }
+                                } else {
+                                    ?>
+                                    <tr>
+                                        <td colspan="3" class="text-center">No Item in Cart</td>
+                                    </tr>
+                                <?php
+                                }
+
+                                ?>
+                                <tr>
+                                    <td colspan="2" align="right"><b>Total</b></td>
+                                    <td><b><?php echo number_format($total, 2); ?></b></td>
                                 </tr>
                             </tbody>
                         </table>
-                        <div class="mt-4 d-flex justify-content-between">
-                            <h3>Total</h3>
-                            <h4>P59</h4>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -50,22 +158,26 @@
                     <div class="card-body">
                         <h1 class="card-title">Products</h1>
                         <div class="row mt-4">
-                            <div class="col-4">
-                                <div class="btn btn-primary btn-lg p-4">
-                                    Fried Chicken
+                            <?php while ($row = $result->fetch_assoc()) : ?>
+                                <div class="col-4">
+                                    <a href="add_cart.php?id=<?php echo $row['id']; ?>">
+                                        <div class="btn btn-primary btn-lg p-4" style="min-width: 200px">
+                                            <?php echo $row['title'] ?>
+                                        </div>
+                                    </a>
                                 </div>
-                            </div>
+                            <?php endwhile;  ?>
                         </div>
                         <hr class="mt-4 border border-primary border-3 opacity-75">
-                        <div class="btn btn-success btn-lg p-4 mt-2">
+                        <a href="pay_now.php" class="btn btn-success btn-lg p-4 mt-2">
                             Pay Now
-                        </div>
-                        <div class="btn btn-info btn-lg p-4 mt-2">
+                        </a>
+                        <a href="pay_later.php" class="btn btn-info btn-lg p-4 mt-2">
                             Pay Later
-                        </div>
-                        <div class="btn btn-danger btn-lg p-4 mt-2">
+                        </a>
+                        <a href="clear_cart.php" class="btn btn-danger btn-lg p-4 mt-2">
                             Cancel Order
-                        </div>
+                        </a>
                     </div>
                 </div>
             </div>
